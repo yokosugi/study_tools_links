@@ -495,7 +495,7 @@ function renderCatView() {
     <button class="stab${catTab==='shakai'?' active':''}" onclick="catTab='shakai';renderCatView()">社会</button>
   </div>`;
 
-  const cats   = catTab === 'rika' ? RIKA_CATS : catTab === 'shakai' ? SHAKAI_CATS : KOKUGO_CATS;
+  const cats   = catTab === 'rika' ? getCats('rika') : catTab === 'shakai' ? getCats('shakai') : getCats('kokugo');
   const keys   = catTab === 'rika'
     ? [{key:'rika_thu',dayLabel:'木曜'},{key:'rika_sat',dayLabel:'土曜'}]
     : catTab === 'shakai'
