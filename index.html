@@ -248,6 +248,14 @@ input:focus{outline:none;border-color:var(--accent);}
 .pw-modal-cancel{font-size:.78rem;color:#8a7d65;background:none;border:none;cursor:pointer;text-decoration:underline;}
 
 
+
+/* TWO COLUMN LAYOUT */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;}
+.col-item{min-width:0;}
+@media(max-width:700px){
+  .two-col{grid-template-columns:1fr;}
+}
+
 /* ROUND GROUPS */
 .round-group{margin-bottom:6px;}
 .round-group-header{width:100%;display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surface);border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-family:inherit;font-size:.82rem;font-weight:700;color:var(--muted);transition:all .15s;}
@@ -390,8 +398,12 @@ function renderDayView() {
   });
   html += `</div>`;
 
+  // 2教科ある場合は横並び、1教科の場合は全幅
+  const multiCol = grp.items.length > 1;
+  if (multiCol) html += `<div class="two-col">`;
+
   grp.items.forEach(it => {
-    html += `<div class="rounds-wrap">
+    html += `<div class="rounds-wrap${multiCol?' col-item':''}">
       <div class="sec-title ${it.subject}">
         <span class="sec-badge ${it.subject}">${it.subject==='kokugo'?'国':it.subject==='rika'?'理':'社'}</span>
         ${it.name} <span class="day-badge">${grp.label}</span>
@@ -437,6 +449,8 @@ function renderDayView() {
     }
     html += `</div>`;
   });
+
+  if (multiCol) html += `</div>`;
   document.getElementById('main').innerHTML = html;
 }
 
