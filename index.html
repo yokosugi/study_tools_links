@@ -619,104 +619,150 @@ function refreshCatManagerUI(subjectKey) {
 
 
 // ===== EDIT VIEW =====
-let editOpenState = {}; // 開閉状態保持
+// 選択状態
+let editSelKey  = null; // 選択中のキー（例: 'kokugo_tue'）
+let editSelN    = null; // 選択中の回
 
 function renderEditView() {
   window._editData = deepClone(window._data || {});
   let html = renderCatManager();
-
-  DAY_GROUPS.forEach((grp, gi) => {
-    html += `<div class="edit-section">
-      <div class="sub-tabs" style="margin-bottom:10px">
-        <span style="font-size:.82rem;font-weight:700;color:var(--muted);padding:5px 4px;">${grp.label}</span>
-      </div>`;
-
-    grp.items.forEach(it => {
-      html += `<div style="margin-bottom:16px;">
-        <div class="sec-title ${it.subject}" style="margin-bottom:10px;">
-          <span class="sec-badge ${it.subject}">${it.subject==='kokugo'?'国':it.subject==='rika'?'理':'社'}</span>
-          ${it.name}
-        </div>`;
-
-      for (let n = 1; n <= it.max; n++) {
-        const stateKey = `${it.key}-${n}`;
-        const isOpen   = !!editOpenState[stateKey];
-        const row   = (window._editData[it.key] && window._editData[it.key][n]) || { links:[] };
-        const links = row.links || [];
-        const cat   = row.category || '';
-        const hasL  = links.length > 0;
-
-        html += `<div class="edit-round">
-          <div class="edit-round-header" onclick="toggleEditRound('${stateKey}', this)">
-            <span style="font-size:.78rem;color:var(--muted)">第</span>
-            <span style="font-weight:700">${n}</span>
-            <span style="font-size:.78rem;color:var(--muted)">回</span>`;
-        if (cat) html += `<span class="cat-pill ${cat}">${cat}</span>`;
-        if (hasL) html += `<span style="font-size:.72rem;color:var(--muted);margin-left:4px;">🔗${links.length}</span>`;
-        html += `<span class="chevron${isOpen?' open':''}">▾</span></div>
-          <div class="edit-round-body${isOpen?' open':''}" id="erb-${stateKey}">`;
-
-        if (it.hasCat) {
-          html += `<select class="cat-select" onchange="setCat('${it.key}',${n},this.value)">
-            <option value="">カテゴリ未設定</option>`;
-          it.cats.forEach(c => html += `<option value="${c}"${cat===c?' selected':''}>${c}</option>`);
-          html += `</select>`;
-        }
-
-        html += `<div id="links-edit-${it.key}-${n}">`;
-        links.forEach((lk, li) => { html += renderLinkRowEdit(it.key, n, li, lk); });
-        html += `</div>
-          <button class="btn-add-link" onclick="addLinkEdit('${it.key}',${n})">＋ リンクを追加</button>
-        </div></div>`;
-      }
-      html += `</div>`;
-    });
-    html += `</div>`;
-  });
-
+  html += renderEditSelector();
   document.getElementById('main').innerHTML = html;
+  renderEditPanel();
 }
 
-function renderLinkRowEdit(key, n, li, lk) {
+function renderEditSelector() {
+  let html = `<div style="max-width:760px;margin:0 auto;padding:0 20px 20px;">
+    <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:14px;overflow:hidden;">
+      <div style="padding:13px 18px;font-weight:700;font-size:.95rem;background:#f0ece0;color:var(--muted);display:flex;align-items:center;gap:6px;">
+        ✏️ リンク編集
+      </div>
+      <div style="padding:16px 18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <select id="editKeySelect" class="cat-select" style="min-width:160px;" onchange="editSelKey=this.value;editSelN=null;updateRoundSelect();renderEditPanel()">
+          <option value="">── 授業を選択 ──</option>`;
+  DAY_GROUPS.forEach(grp => {
+    grp.items.forEach(it => {
+      const badge = it.subject==='kokugo'?'国':it.subject==='rika'?'理':'社';
+      const selected = editSelKey===it.key ? ' selected' : '';
+      html += `<option value="${it.key}"${selected}>[${grp.label}] ${it.name}</option>`;
+    });
+  });
+  html += `</select>
+        <select id="editRoundSelect" class="cat-select" style="min-width:120px;" onchange="editSelN=parseInt(this.value);renderEditPanel()">
+          <option value="">── 回を選択 ──</option>`;
+  // 選択中のキーがあれば回を埋める
+  if (editSelKey) {
+    const it = DAY_GROUPS.flatMap(g=>g.items).find(i=>i.key===editSelKey);
+    if (it) {
+      for (let n=1; n<=it.max; n++) {
+        const row = (window._editData[editSelKey]&&window._editData[editSelKey][n])||{links:[]};
+        const hasL = (row.links||[]).length > 0;
+        const cat  = row.category || '';
+        const sel  = editSelN===n ? ' selected' : '';
+        html += `<option value="${n}"${sel}>第${n}回${hasL?' 🔗':''}${cat?' ['+cat+']':''}</option>`;
+      }
+    }
+  }
+  html += `</select>
+      </div>
+      <div id="editPanel" style="padding:0 18px 18px;"></div>
+    </div>
+  </div>`;
+  return html;
+}
+
+function updateRoundSelect() {
+  const sel = document.getElementById('editRoundSelect');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">── 回を選択 ──</option>';
+  if (!editSelKey) return;
+  const it = DAY_GROUPS.flatMap(g=>g.items).find(i=>i.key===editSelKey);
+  if (!it) return;
+  for (let n=1; n<=it.max; n++) {
+    const row = (window._editData[editSelKey]&&window._editData[editSelKey][n])||{links:[]};
+    const hasL = (row.links||[]).length > 0;
+    const cat  = row.category || '';
+    const opt = document.createElement('option');
+    opt.value = n;
+    opt.textContent = `第${n}回${hasL?' 🔗':''}${cat?' ['+cat+']':''}`;
+    sel.appendChild(opt);
+  }
+}
+
+function renderEditPanel() {
+  const panel = document.getElementById('editPanel');
+  if (!panel) return;
+  if (!editSelKey || !editSelN) {
+    panel.innerHTML = '<div style="font-size:.82rem;color:var(--muted);padding:4px 0 8px;">授業と回を選択してください</div>';
+    return;
+  }
+  const it = DAY_GROUPS.flatMap(g=>g.items).find(i=>i.key===editSelKey);
+  if (!it) return;
+  if (!window._editData[editSelKey]) window._editData[editSelKey] = {};
+  if (!window._editData[editSelKey][editSelN]) window._editData[editSelKey][editSelN] = {category:'',links:[]};
+  const row   = window._editData[editSelKey][editSelN];
+  const links = row.links || [];
+  const cat   = row.category || '';
+  const subj  = it.subject;
+
+  let html = `<div style="border-top:1.5px solid var(--border);padding-top:14px;">
+    <div style="font-size:.85rem;font-weight:700;margin-bottom:10px;color:var(--${subj});">
+      第${editSelN}回 <span class="day-badge">${DAY_GROUPS.find(g=>g.items.some(i=>i.key===editSelKey))?.label||''}</span>
+    </div>`;
+
+  if (it.hasCat) {
+    html += `<div style="margin-bottom:10px;">
+      <select class="cat-select" onchange="setEditCat(this.value)">
+        <option value="">カテゴリ未設定</option>`;
+    it.cats.forEach(c => html += `<option value="${c}"${cat===c?' selected':''}>${c}</option>`);
+    html += `</select></div>`;
+  }
+
+  html += `<div id="links-edit-panel">`;
+  links.forEach((lk, li) => { html += renderLinkRowEdit(li, lk); });
+  html += `</div>
+    <button class="btn-add-link" style="margin-top:6px;" onclick="addLinkEditPanel()">＋ リンクを追加</button>
+  </div>`;
+  panel.innerHTML = html;
+}
+
+function setEditCat(val) {
+  if (!window._editData[editSelKey][editSelN]) window._editData[editSelKey][editSelN] = {links:[]};
+  window._editData[editSelKey][editSelN].category = val;
+  updateRoundSelect();
+}
+
+function renderLinkRowEdit(li, lk) {
   return `<div class="link-row" data-li="${li}">
-    <input type="text" placeholder="ラベル" value="${escA(lk.label||'')}"
-      oninput="window._editData['${key}'][${n}].links[${li}].label=this.value" />
-    <input type="url" placeholder="URL を貼り付け" value="${escA(lk.url||'')}"
-      oninput="window._editData['${key}'][${n}].links[${li}].url=this.value" />
-    <button class="btn-del" onclick="delLinkEdit('${key}',${n},${li})">✕</button>
+    <input type="text" placeholder="ラベル" value="${escA((lk&&lk.label)||'')}"
+      oninput="window._editData['${editSelKey}'][${editSelN}].links[${li}].label=this.value" />
+    <input type="url" placeholder="URL を貼り付け" value="${escA((lk&&lk.url)||'')}"
+      oninput="window._editData['${editSelKey}'][${editSelN}].links[${li}].url=this.value" />
+    <button class="btn-del" onclick="delLinkEditPanel(${li})">✕</button>
   </div>`;
 }
 
-function toggleEditRound(stateKey, header) {
-  const body = document.getElementById('erb-' + stateKey);
-  const isOpen = body.classList.toggle('open');
-  editOpenState[stateKey] = isOpen;
-  header.querySelector('.chevron').classList.toggle('open', isOpen);
+function addLinkEditPanel() {
+  if (!window._editData[editSelKey][editSelN].links) window._editData[editSelKey][editSelN].links = [];
+  const li = window._editData[editSelKey][editSelN].links.length;
+  window._editData[editSelKey][editSelN].links.push({label:'',url:''});
+  document.getElementById('links-edit-panel').insertAdjacentHTML('beforeend', renderLinkRowEdit(li, {label:'',url:''}));
+  updateRoundSelect();
+}
+
+function delLinkEditPanel(li) {
+  window._editData[editSelKey][editSelN].links.splice(li, 1);
+  const container = document.getElementById('links-edit-panel');
+  let html = '';
+  window._editData[editSelKey][editSelN].links.forEach((lk,i) => { html += renderLinkRowEdit(i, lk); });
+  container.innerHTML = html;
+  updateRoundSelect();
 }
 
 function setCat(key, n, val) {
   if (!window._editData[key]) window._editData[key] = {};
-  if (!window._editData[key][n]) window._editData[key][n] = { links:[] };
+  if (!window._editData[key][n]) window._editData[key][n] = {links:[]};
   window._editData[key][n].category = val;
-}
-
-function addLinkEdit(key, n) {
-  if (!window._editData[key]) window._editData[key] = {};
-  if (!window._editData[key][n]) window._editData[key][n] = { links:[] };
-  if (!window._editData[key][n].links) window._editData[key][n].links = [];
-  const li = window._editData[key][n].links.length;
-  window._editData[key][n].links.push({ label:'', url:'' });
-  document.getElementById(`links-edit-${key}-${n}`).insertAdjacentHTML('beforeend',
-    renderLinkRowEdit(key, n, li, { label:'', url:'' }));
-}
-
-function delLinkEdit(key, n, li) {
-  window._editData[key][n].links.splice(li, 1);
-  // rerender just that section
-  const container = document.getElementById(`links-edit-${key}-${n}`);
-  let html = '';
-  window._editData[key][n].links.forEach((lk, i) => { html += renderLinkRowEdit(key, n, i, lk); });
-  container.innerHTML = html;
 }
 
 async function saveAll() {
