@@ -45,6 +45,7 @@
 
     function normalizeData(raw) {
       const keys = ['kokugo_tue','rika_thu','rika_sat','shakai_tue','shakai_sat'];
+      // _catsキーはデータとして扱わない
       const out = {};
       keys.forEach(k => {
         out[k] = {};
@@ -76,6 +77,10 @@
       const data = normalizeData(raw || makeDefault());
       window._data = data;
       window._editData = JSON.parse(JSON.stringify(data));
+      // カテゴリをFirebaseから復元
+      if (raw && raw._cats) {
+        window._cats = Object.assign({kokugo:[...DEFAULT_CATS.kokugo],rika:[...DEFAULT_CATS.rika],shakai:[...DEFAULT_CATS.shakai]}, raw._cats);
+      }
       document.getElementById('loading').classList.add('hidden');
       setStatus('connected');
       if (window._currentView) window._currentView();
@@ -256,6 +261,23 @@ input:focus{outline:none;border-color:var(--accent);}
   .two-col{grid-template-columns:1fr;}
 }
 
+
+/* CATEGORY MANAGER */
+.cat-manager{background:var(--surface);border:1.5px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:24px;}
+.cat-manager-title{font-size:.88rem;font-weight:700;color:var(--muted);margin-bottom:14px;letter-spacing:.04em;}
+.cat-manager-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+.cat-manager-col{}
+.cat-tag-list{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;min-height:28px;}
+.cat-tag{display:inline-flex;align-items:center;gap:3px;}
+.cat-tag-del{background:none;border:none;cursor:pointer;color:var(--muted);font-size:.65rem;padding:1px 3px;border-radius:3px;line-height:1;transition:all .12s;}
+.cat-tag-del:hover{background:#fce8e8;color:#c0392b;}
+.cat-add-row{display:flex;gap:6px;align-items:center;}
+.cat-add-input{font-family:inherit;font-size:.8rem;padding:6px 9px;border:1.5px solid var(--border);border-radius:7px;background:var(--bg);color:var(--text);width:100%;transition:border-color .15s;}
+.cat-add-input:focus{outline:none;border-color:var(--accent);}
+.btn-add-cat{font-family:inherit;font-size:.9rem;font-weight:700;width:30px;height:30px;border-radius:7px;border:1.5px solid var(--border);background:transparent;cursor:pointer;color:var(--muted);transition:all .12s;flex-shrink:0;}
+.btn-add-cat:hover{border-color:var(--accent);color:var(--accent);background:#fdf8ef;}
+@media(max-width:600px){.cat-manager-grid{grid-template-columns:1fr;}}
+
 /* ROUND GROUPS */
 .round-group{margin-bottom:6px;}
 .round-group-header{width:100%;display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surface);border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-family:inherit;font-size:.82rem;font-weight:700;color:var(--muted);transition:all .15s;}
@@ -304,21 +326,31 @@ input:focus{outline:none;border-color:var(--accent);}
 
 <script>
 // ===== CONFIG =====
-const KOKUGO_CATS = ['知識','漢字'];
-const RIKA_CATS  = ['生物','地学','物理','化学'];
-const SHAKAI_CATS = ['公民','歴史','地理'];
+// カテゴリはFirebaseから動的に読み込む（デフォルト値）
+const DEFAULT_CATS = {
+  kokugo: ['知識','漢字'],
+  rika:   ['生物','地学','物理','化学'],
+  shakai: ['公民','歴史','地理'],
+};
+// 実行時カテゴリ（Firebase上書き後はこちらを参照）
+window._cats = {
+  kokugo: [...DEFAULT_CATS.kokugo],
+  rika:   [...DEFAULT_CATS.rika],
+  shakai: [...DEFAULT_CATS.shakai],
+};
+function getCats(subject) { return window._cats[subject] || []; }
 
 const DAY_GROUPS = [
   { label:'火曜日', items:[
-    { key:'kokugo_tue', subject:'kokugo', name:'国語', max:45, hasCat:true, cats:KOKUGO_CATS },
-    { key:'shakai_tue', subject:'shakai', name:'社会', max:45, hasCat:true, cats:SHAKAI_CATS },
+    { key:'kokugo_tue', subject:'kokugo', name:'国語', max:45, hasCat:true, get cats(){ return getCats('kokugo'); } },
+    { key:'shakai_tue', subject:'shakai', name:'社会', max:45, hasCat:true, get cats(){ return getCats('shakai'); } },
   ]},
   { label:'木曜日', items:[
-    { key:'rika_thu', subject:'rika', name:'理科', max:45, hasCat:true, cats:RIKA_CATS },
+    { key:'rika_thu', subject:'rika', name:'理科', max:45, hasCat:true, get cats(){ return getCats('rika'); } },
   ]},
   { label:'土曜日', items:[
-    { key:'rika_sat', subject:'rika', name:'理科', max:35, hasCat:true, cats:RIKA_CATS },
-    { key:'shakai_sat', subject:'shakai', name:'社会', max:35, hasCat:true, cats:SHAKAI_CATS },
+    { key:'rika_sat', subject:'rika', name:'理科', max:35, hasCat:true, get cats(){ return getCats('rika'); } },
+    { key:'shakai_sat', subject:'shakai', name:'社会', max:35, hasCat:true, get cats(){ return getCats('shakai'); } },
   ]},
 ];
 
@@ -511,12 +543,87 @@ function renderCatView() {
   document.getElementById('main').innerHTML = html;
 }
 
+
+// ===== CATEGORY MANAGER =====
+const CAT_SUBJECTS = [
+  { key:'kokugo', label:'国語', cls:'kokugo', badge:'国' },
+  { key:'rika',   label:'理科', cls:'rika',   badge:'理' },
+  { key:'shakai', label:'社会', cls:'shakai', badge:'社' },
+];
+
+function renderCatManager() {
+  let html = `<div class="cat-manager">
+    <div class="cat-manager-title">🏷️ カテゴリ管理</div>
+    <div class="cat-manager-grid">`;
+
+  CAT_SUBJECTS.forEach(sub => {
+    const cats = window._cats[sub.key] || [];
+    html += `<div class="cat-manager-col">
+      <div class="sec-title ${sub.cls}" style="margin-bottom:10px;">
+        <span class="sec-badge ${sub.cls}">${sub.badge}</span>${sub.label}
+      </div>
+      <div class="cat-tag-list" id="cattags-${sub.key}">`;
+    cats.forEach((c, i) => {
+      html += `<span class="cat-tag">
+        <span class="cat-pill ${c}">${c}</span>
+        <button class="cat-tag-del" onclick="deleteCat('${sub.key}',${i})" title="削除">✕</button>
+      </span>`;
+    });
+    html += `</div>
+      <div class="cat-add-row">
+        <input type="text" class="cat-add-input" id="catinput-${sub.key}"
+          placeholder="新しいカテゴリ名"
+          onkeydown="if(event.key==='Enter')addCat('${sub.key}')" />
+        <button class="btn-add-cat" onclick="addCat('${sub.key}')">＋</button>
+      </div>
+    </div>`;
+  });
+
+  html += `</div></div>`;
+  return html;
+}
+
+function addCat(subjectKey) {
+  const input = document.getElementById(`catinput-${subjectKey}`);
+  const val = input.value.trim();
+  if (!val) return;
+  if (window._cats[subjectKey].includes(val)) {
+    input.value = '';
+    return;
+  }
+  window._cats[subjectKey].push(val);
+  input.value = '';
+  refreshCatManagerUI(subjectKey);
+}
+
+function deleteCat(subjectKey, idx) {
+  const cat = window._cats[subjectKey][idx];
+  if (!confirm(`「${cat}」を削除しますか？\n（この回にカテゴリが設定されていても削除されます）`)) return;
+  window._cats[subjectKey].splice(idx, 1);
+  refreshCatManagerUI(subjectKey);
+}
+
+function refreshCatManagerUI(subjectKey) {
+  const cats = window._cats[subjectKey] || [];
+  const container = document.getElementById(`cattags-${subjectKey}`);
+  if (!container) return;
+  let html = '';
+  cats.forEach((c, i) => {
+    html += `<span class="cat-tag">
+      <span class="cat-pill ${c}">${c}</span>
+      <button class="cat-tag-del" onclick="deleteCat('${subjectKey}',${i})" title="削除">✕</button>
+    </span>`;
+  });
+  container.innerHTML = html;
+}
+
+
 // ===== EDIT VIEW =====
 let editOpenState = {}; // 開閉状態保持
 
 function renderEditView() {
   window._editData = deepClone(window._data || {});
-  let html = '';
+  let html = renderCatManager();
 
   DAY_GROUPS.forEach((grp, gi) => {
     html += `<div class="edit-section">
@@ -616,7 +723,8 @@ async function saveAll() {
   const btn = document.getElementById('btnSave');
   btn.disabled = true; btn.textContent = '保存中…';
   try {
-    await window._set(window._editData);
+    const saveObj = Object.assign({}, window._editData, { _cats: window._cats });
+    await window._set(saveObj);
     showToast('✅ クラウドに保存しました！');
     window._data = deepClone(window._editData);
   } catch(e) {
@@ -629,6 +737,72 @@ async function saveAll() {
 function cancelEdit() {
   if (!confirm('編集内容を破棄しますか？')) return;
   switchTop('day');
+}
+
+
+// ===== CATEGORY MANAGER =====
+function renderCatManager() {
+  const subjects = [
+    { key:'kokugo', label:'国語', cls:'kokugo', badge:'国' },
+    { key:'rika',   label:'理科', cls:'rika',   badge:'理' },
+    { key:'shakai', label:'社会', cls:'shakai', badge:'社' },
+  ];
+  let html = `<div style="max-width:760px;margin:0 auto;padding:0 20px 4px;">
+    <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:22px;">
+      <div style="padding:13px 18px;font-weight:700;font-size:.95rem;background:#f0ece0;color:var(--muted);display:flex;align-items:center;gap:6px;">
+        🏷️ カテゴリ管理
+      </div>
+      <div style="padding:14px 18px;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;">`;
+
+  subjects.forEach(sub => {
+    const cats = getCats(sub.key);
+    html += `<div>
+      <div style="font-size:.8rem;font-weight:700;color:var(--${sub.cls});margin-bottom:8px;display:flex;align-items:center;gap:5px;">
+        <span style="background:var(--${sub.cls});color:#fff;border-radius:5px;padding:1px 7px;font-size:.78rem;">${sub.badge}</span>${sub.label}
+      </div>
+      <div id="catlist-${sub.key}" style="display:flex;flex-direction:column;gap:5px;">`;
+    cats.forEach((c, ci) => {
+      html += `<div style="display:flex;align-items:center;gap:6px;">
+        <span class="cat-pill ${c}" style="flex:1;padding:4px 8px;">${escH(c)}</span>
+        <button onclick="deleteCat('${sub.key}',${ci})" style="width:24px;height:24px;border:none;border-radius:5px;background:#fce8e8;color:#c0392b;cursor:pointer;font-size:.8rem;flex-shrink:0;">✕</button>
+      </div>`;
+    });
+    html += `</div>
+      <div style="display:flex;gap:5px;margin-top:7px;">
+        <input type="text" id="newcat-${sub.key}" placeholder="新しいカテゴリ名"
+          style="font-family:inherit;font-size:.78rem;padding:5px 8px;border:1.5px solid var(--border);border-radius:7px;background:var(--bg);flex:1;min-width:0;"
+          onkeydown="if(event.key==='Enter')addCat('${sub.key}')" />
+        <button onclick="addCat('${sub.key}')"
+          style="font-family:inherit;font-size:.78rem;font-weight:700;padding:5px 10px;border-radius:7px;border:1.5px dashed var(--border);background:transparent;cursor:pointer;color:var(--muted);white-space:nowrap;"
+          onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'"
+          onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">＋ 追加</button>
+      </div>
+    </div>`;
+  });
+
+  html += `</div></div></div>`;
+  return html;
+}
+
+function addCat(subjectKey) {
+  const input = document.getElementById('newcat-' + subjectKey);
+  const val = input.value.trim();
+  if (!val) return;
+  if (window._cats[subjectKey].includes(val)) {
+    showToast('⚠️ すでに存在するカテゴリです');
+    return;
+  }
+  window._cats[subjectKey].push(val);
+  input.value = '';
+  renderEditView();
+}
+
+function deleteCat(subjectKey, ci) {
+  const cat = window._cats[subjectKey][ci];
+  if (!confirm(`「${cat}」を削除しますか？
+（各回に設定済みのカテゴリは変更されません）`)) return;
+  window._cats[subjectKey].splice(ci, 1);
+  renderEditView();
 }
 
 // ===== UTILS =====
