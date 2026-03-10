@@ -10,82 +10,91 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
   import { getDatabase, ref, onValue, set, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-  // ============================================================
-  // ★ ここにFirebaseの設定を貼り付けてください ★
-  // ============================================================
   const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT.firebaseapp.com",
-    databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
-    projectId: "YOUR_PROJECT",
-    storageBucket: "YOUR_PROJECT.appspot.com",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID"
+    apiKey: "AIzaSyBxpnH1EVG4NPKwF6RYEONlKLDnm-psRu8",
+    authDomain: "study-tools-link.firebaseapp.com",
+    databaseURL: "https://study-tools-link-default-rtdb.firebaseio.com",
+    projectId: "study-tools-link",
+    storageBucket: "study-tools-link.firebasestorage.app",
+    messagingSenderId: "465773166187",
+    appId: "1:465773166187:web:fcebf789e057a3be267b2e",
+    measurementId: "G-6346MW19K8"
   };
-  // ============================================================
 
-  const app = initializeApp(firebaseConfig);
-  const db = getDatabase(app);
-  const DATA_REF = ref(db, 'links_v2');
+  try {
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const DATA_REF = ref(db, 'links_v2');
 
-  window._set = (data) => set(DATA_REF, data);
+    window._set = (data) => set(DATA_REF, data);
 
-  // 初期データ生成
-  function makeDefault() {
-    const d = {};
-    // 国語 火曜 1-45
-    d.kokugo_tue = {};
-    for (let i = 1; i <= 45; i++) d.kokugo_tue[i] = { category: '', links: [] };
-    // 理科 木曜 1-45
-    d.rika_thu = {};
-    for (let i = 1; i <= 45; i++) d.rika_thu[i] = { category: '', links: [] };
-    // 理科 土曜 1-35
-    d.rika_sat = {};
-    for (let i = 1; i <= 35; i++) d.rika_sat[i] = { category: '', links: [] };
-    // 社会 火曜 1-45
-    d.shakai_tue = {};
-    for (let i = 1; i <= 45; i++) d.shakai_tue[i] = { category: '', links: [] };
-    // 社会 土曜 1-35
-    d.shakai_sat = {};
-    for (let i = 1; i <= 35; i++) d.shakai_sat[i] = { category: '', links: [] };
-    return d;
-  }
+    function makeDefault() {
+      const d = {};
+      d.kokugo_tue = {};
+      for (let i = 1; i <= 45; i++) d.kokugo_tue[i] = { category: '', links: [] };
+      d.rika_thu = {};
+      for (let i = 1; i <= 45; i++) d.rika_thu[i] = { category: '', links: [] };
+      d.rika_sat = {};
+      for (let i = 1; i <= 35; i++) d.rika_sat[i] = { category: '', links: [] };
+      d.shakai_tue = {};
+      for (let i = 1; i <= 45; i++) d.shakai_tue[i] = { category: '', links: [] };
+      d.shakai_sat = {};
+      for (let i = 1; i <= 35; i++) d.shakai_sat[i] = { category: '', links: [] };
+      return d;
+    }
 
-  get(DATA_REF).then(snap => {
-    if (!snap.exists()) set(DATA_REF, makeDefault());
-  });
+    function normalizeData(raw) {
+      const keys = ['kokugo_tue','rika_thu','rika_sat','shakai_tue','shakai_sat'];
+      const out = {};
+      keys.forEach(k => {
+        out[k] = {};
+        if (raw[k]) {
+          Object.keys(raw[k]).forEach(i => {
+            const n = parseInt(i);
+            if (!isNaN(n)) {
+              out[k][n] = raw[k][i];
+              if (!out[k][n].links) out[k][n].links = [];
+            }
+          });
+        }
+      });
+      return out;
+    }
 
-  onValue(DATA_REF, (snap) => {
-    const raw = snap.val() || makeDefault();
-    // 配列→オブジェクト変換（Firebaseが配列化することへの対応）
-    const data = normalizeData(raw);
-    window._data = data;
-    window._editData = deepClone(data);
-    document.getElementById('loading').classList.add('hidden');
-    setStatus('connected');
-    if (window._currentView) window._currentView();
-    else renderDayView();
-  }, err => {
-    setStatus('error');
-    document.getElementById('loading').classList.add('hidden');
-  });
-
-  function normalizeData(raw) {
-    const keys = ['kokugo_tue','rika_thu','rika_sat','shakai_tue','shakai_sat'];
-    const out = {};
-    keys.forEach(k => {
-      out[k] = {};
-      if (raw[k]) {
-        Object.keys(raw[k]).forEach(i => {
-          const n = parseInt(i);
-          if (!isNaN(n)) {
-            out[k][n] = raw[k][i];
-            if (!out[k][n].links) out[k][n].links = [];
-          }
-        });
+    // 初回：データがなければデフォルトを書き込む
+    get(DATA_REF).then(snap => {
+      if (!snap.exists()) {
+        return set(DATA_REF, makeDefault());
       }
+    }).catch(err => {
+      console.error('初期データ書き込みエラー:', err);
     });
-    return out;
+
+    // リアルタイム購読
+    onValue(DATA_REF, (snap) => {
+      const raw = snap.val();
+      const data = normalizeData(raw || makeDefault());
+      window._data = data;
+      window._editData = JSON.parse(JSON.stringify(data));
+      document.getElementById('loading').classList.add('hidden');
+      setStatus('connected');
+      if (window._currentView) window._currentView();
+      else if (typeof renderDayView === 'function') renderDayView();
+    }, (err) => {
+      console.error('Firebase接続エラー:', err);
+      setStatus('error');
+      document.getElementById('loading').classList.add('hidden');
+      // オフラインフォールバック
+      const data = normalizeData(makeDefault());
+      window._data = data;
+      window._editData = JSON.parse(JSON.stringify(data));
+      if (typeof renderDayView === 'function') renderDayView();
+    });
+
+  } catch(e) {
+    console.error('Firebase初期化エラー:', e);
+    document.getElementById('loading').classList.add('hidden');
+    setStatus('error');
   }
 </script>
 
