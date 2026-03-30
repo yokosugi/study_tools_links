@@ -40,11 +40,20 @@
       for (let i = 1; i <= 45; i++) d.shakai_tue[i] = { category: '', links: [] };
       d.shakai_sat = {};
       for (let i = 1; i <= 35; i++) d.shakai_sat[i] = { category: '', links: [] };
+      // 春期講習
+      d.kokugo_spr = {};
+      for (let i = 1; i <= 6; i++) d.kokugo_spr[i] = { category: '', links: [] };
+      d.sansu_spr = {};
+      for (let i = 1; i <= 6; i++) d.sansu_spr[i] = { category: '', links: [] };
+      d.rika_spr = {};
+      for (let i = 1; i <= 3; i++) d.rika_spr[i] = { category: '', links: [] };
+      d.shakai_spr = {};
+      for (let i = 1; i <= 3; i++) d.shakai_spr[i] = { category: '', links: [] };
       return d;
     }
 
     function normalizeData(raw) {
-      const keys = ['kokugo_tue','rika_thu','rika_sat','shakai_tue','shakai_sat'];
+      const keys = ['kokugo_tue','rika_thu','rika_sat','shakai_tue','shakai_sat','kokugo_spr','sansu_spr','rika_spr','shakai_spr'];
       // _catsキーはデータとして扱わない
       const out = {};
       keys.forEach(k => {
@@ -79,12 +88,12 @@
       window._editData = JSON.parse(JSON.stringify(data));
       // カテゴリをFirebaseから復元
       if (raw && raw._cats) {
-        window._cats = Object.assign({kokugo:[...DEFAULT_CATS.kokugo],rika:[...DEFAULT_CATS.rika],shakai:[...DEFAULT_CATS.shakai]}, raw._cats);
+        window._cats = Object.assign({kokugo:[...DEFAULT_CATS.kokugo],sansu:[...DEFAULT_CATS.sansu],rika:[...DEFAULT_CATS.rika],shakai:[...DEFAULT_CATS.shakai]}, raw._cats);
       }
       document.getElementById('loading').classList.add('hidden');
       setStatus('connected');
       if (window._currentView) window._currentView();
-      else if (typeof renderDayView === 'function') renderDayView();
+      else if (typeof renderWeekdayView === 'function') renderWeekdayView();
     }, (err) => {
       console.error('Firebase接続エラー:', err);
       setStatus('error');
@@ -93,7 +102,7 @@
       const data = normalizeData(makeDefault());
       window._data = data;
       window._editData = JSON.parse(JSON.stringify(data));
-      if (typeof renderDayView === 'function') renderDayView();
+      if (typeof renderWeekdayView === 'function') renderWeekdayView();
     });
 
   } catch(e) {
@@ -117,6 +126,8 @@
   --shakai: #1a4e98;
   --shakai-l: #edf2fb;
   --accent: #e09018;
+  --sansu: #7a3a9e;
+  --sansu-l: #f5eefb;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
@@ -199,6 +210,11 @@ main{max-width:960px;margin:0 auto;padding:24px 18px 80px;}
 .cat-header.歴史{background:#fdf0ee;color:#b5281e;}
 .cat-header.地理{background:#e8f5ee;color:#1a7040;}
 .cat-header.未設定{background:#f0ece0;color:var(--muted);}
+.sec-title.sansu{color:var(--sansu);border-color:var(--sansu);}
+.sec-badge.sansu{background:var(--sansu);color:#fff;}
+.sansu-card.has-links{border-left-color:var(--sansu);}
+.link-item.sansu-lnk{color:var(--sansu);background:var(--sansu-l);}
+.link-item.sansu-lnk:hover{background:#e0c8f5;}
 
 /* EDITOR */
 .edit-section{margin-bottom:28px;}
@@ -253,6 +269,16 @@ input:focus{outline:none;border-color:var(--accent);}
 .pw-modal-cancel{font-size:.78rem;color:#8a7d65;background:none;border:none;cursor:pointer;text-decoration:underline;}
 
 
+
+
+/* THREE COLUMN LAYOUT */
+.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;align-items:start;}
+@media(max-width:900px){
+  .three-col{grid-template-columns:1fr 1fr;}
+}
+@media(max-width:580px){
+  .three-col{grid-template-columns:1fr;}
+}
 
 /* TWO COLUMN LAYOUT */
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;}
@@ -309,7 +335,9 @@ input:focus{outline:none;border-color:var(--accent);}
     <span class="status-dot" id="statusDot"></span>
     <span class="status-label" id="statusLabel">接続中…</span>
     <div class="top-tabs">
-      <button class="ttab active" onclick="switchTop('day')">📅 曜日別</button>
+      <button class="ttab active" onclick="switchTop('weekday')">📅 平日</button>
+      <button class="ttab" onclick="switchTop('doktoku')">🏫 土特</button>
+      <button class="ttab" onclick="switchTop('season')">🌸 季節講習</button>
       <button class="ttab" onclick="switchTop('cat')">🏷️ カテゴリ別</button>
       <button class="ttab" onclick="switchTop('edit')">✏️ 編集</button>
     </div>
@@ -329,12 +357,14 @@ input:focus{outline:none;border-color:var(--accent);}
 // カテゴリはFirebaseから動的に読み込む（デフォルト値）
 const DEFAULT_CATS = {
   kokugo: ['知識','漢字'],
+  sansu:  [],
   rika:   ['生物','地学','物理','化学'],
   shakai: ['公民','歴史','地理'],
 };
 // 実行時カテゴリ（Firebase上書き後はこちらを参照）
 window._cats = {
   kokugo: [...DEFAULT_CATS.kokugo],
+  sansu:  [...DEFAULT_CATS.sansu],
   rika:   [...DEFAULT_CATS.rika],
   shakai: [...DEFAULT_CATS.shakai],
 };
@@ -356,7 +386,15 @@ const DAY_GROUPS = [
 
 const ALL_ITEMS = DAY_GROUPS.flatMap(g => g.items.map(it => ({...it, dayLabel:g.label})));
 
-let topView = 'day';
+// 春期講習
+const SPRING_ITEMS = [
+  { key:'kokugo_spr', subject:'kokugo', name:'国語', max:6,  hasCat:true, get cats(){ return getCats('kokugo'); } },
+  { key:'sansu_spr',  subject:'sansu',  name:'算数', max:6,  hasCat:true, get cats(){ return getCats('sansu');  } },
+  { key:'rika_spr',   subject:'rika',   name:'理科', max:3,  hasCat:true, get cats(){ return getCats('rika');   } },
+  { key:'shakai_spr', subject:'shakai', name:'社会', max:3,  hasCat:true, get cats(){ return getCats('shakai'); } },
+];
+
+let topView = 'weekday';
 let dayTab  = 0; // 曜日インデックス
 let catTab  = 'kokugo'; // kokugo / rika / shakai
 
@@ -369,9 +407,16 @@ function setStatus(s) {
 // ===== ROUTER =====
 function switchTop(view) {
   topView = view;
-  document.querySelectorAll('.ttab').forEach((b,i) => b.classList.toggle('active', ['day','cat','edit'][i] === view));
+  document.querySelectorAll('.ttab').forEach((b,i) =>
+    b.classList.toggle('active', ['weekday','doktoku','season','cat','edit'][i] === view));
   document.getElementById('saveBar').classList.toggle('visible', view === 'edit');
-  if (view === 'day')  { 
+  if (view === 'weekday') { window._currentView = renderWeekdayView;  renderWeekdayView(); }
+  if (view === 'doktoku') { window._currentView = renderDoktokuView;  renderDoktokuView(); }
+  if (view === 'season')  { window._currentView = renderSeasonView;   renderSeasonView();  }
+  if (view === 'cat')     { window._currentView = renderCatView;      renderCatView();     }
+  if (view === 'edit')    { window._currentView = renderEditView;     renderEditView();    }
+}
+
 function toggleGroup(id, btn) {
   const body = document.getElementById(id);
   const isOpen = body.classList.toggle('open');
@@ -379,7 +424,7 @@ function toggleGroup(id, btn) {
   btn.querySelector('.grp-chevron').textContent = isOpen ? '▲' : '▼';
 }
 
-window._currentView = renderDayView;
+window._currentView = renderWeekdayView;
 
 // ===== LINK PASSWORD =====
 let _pendingUrl = null;
@@ -415,57 +460,43 @@ function closePwModal() {
   document.getElementById('pwModalErr').style.display = 'none';
   _pendingUrl = null;
 }
-  renderDayView(); }
-  if (view === 'cat')  { window._currentView = renderCatView;  renderCatView(); }
-  if (view === 'edit') { window._currentView = renderEditView; renderEditView(); }
-}
 
-// ===== DAY VIEW =====
-function renderDayView() {
-  const data = window._data || {};
-  const grp  = DAY_GROUPS[dayTab];
-  let html = `<div class="sub-tabs">`;
-  DAY_GROUPS.forEach((g,i) => {
-    html += `<button class="stab${i===dayTab?' active':''}" onclick="dayTab=${i};renderDayView()">${g.label}</button>`;
-  });
-  html += `</div>`;
 
-  // 2教科ある場合は横並び、1教科の場合は全幅
-  const multiCol = grp.items.length > 1;
-  if (multiCol) html += `<div class="two-col">`;
-
-  grp.items.forEach(it => {
-    html += `<div class="rounds-wrap${multiCol?' col-item':''}">
+// ===== SHARED RENDER HELPER =====
+function renderItemGroups(items, data, wrapClass='two-col') {
+  const cols = items.length === 1 ? '' : items.length === 2 ? 'two-col' : 'three-col';
+  let html = cols ? `<div class="${cols}">` : '';
+  items.forEach(it => {
+    const badge = it.subject==='kokugo'?'国':it.subject==='sansu'?'算':it.subject==='rika'?'理':'社';
+    const dayLabel = it.dayLabel || '';
+    html += `<div class="rounds-wrap${cols?' col-item':''}">
       <div class="sec-title ${it.subject}">
-        <span class="sec-badge ${it.subject}">${it.subject==='kokugo'?'国':it.subject==='rika'?'理':'社'}</span>
-        ${it.name} <span class="day-badge">${grp.label}</span>
+        <span class="sec-badge ${it.subject}">${badge}</span>
+        ${it.name}${dayLabel?` <span class="day-badge">${dayLabel}</span>`:''}
       </div>`;
-
     const GROUP_SIZE = 4;
     const totalGroups = Math.ceil(it.max / GROUP_SIZE);
     const SHOW_DEFAULT = 3;
-
     for (let g = 0; g < totalGroups; g++) {
       const from = g * GROUP_SIZE + 1;
       const to   = Math.min((g + 1) * GROUP_SIZE, it.max);
       const isOpen = g < SHOW_DEFAULT;
       const groupId = `grp-${it.key}-${g}`;
-
       html += `<div class="round-group">
         <button class="round-group-header${isOpen?' open':''}" onclick="toggleGroup('${groupId}',this)">
-          <span>第${from}回 〜 第${to}回</span>
+          <span>${it.sprLabel||'第'}${from}回 〜 ${it.sprLabel||'第'}${to}回</span>
           <span class="grp-chevron">${isOpen?'▲':'▼'}</span>
         </button>
         <div class="round-group-body${isOpen?' open':''}" id="${groupId}">
           <div class="rounds-grid">`;
-
       for (let n = from; n <= to; n++) {
         const row   = (data[it.key] && data[it.key][n]) || { links:[] };
         const links = row.links || [];
         const cat   = row.category || '';
         const hasL  = links.length > 0;
+        const numLabel = it.sprLabel ? `${it.sprLabel}${n}回` : `第${n}回`;
         html += `<div class="round-card ${it.subject}-card${hasL?' has-links':''}">
-          <div class="round-num">第${n}回${cat ? `<span class="cat-pill ${cat}">${cat}</span>` : ''}</div>
+          <div class="round-num">${numLabel}${cat?`<span class="cat-pill ${cat}">${cat}</span>`:''}</div>
           <div class="link-list">`;
         if (hasL) {
           links.forEach(lk => {
@@ -481,8 +512,77 @@ function renderDayView() {
     }
     html += `</div>`;
   });
+  if (cols) html += `</div>`;
+  return html;
+}
 
-  if (multiCol) html += `</div>`;
+// ===== WEEKDAY VIEW（平日）=====
+function renderWeekdayView() {
+  const data = window._data || {};
+  const items = [
+    { key:'kokugo_tue', subject:'kokugo', name:'国語', max:45, hasCat:true, dayLabel:'火曜', get cats(){ return getCats('kokugo'); } },
+    { key:'rika_thu',   subject:'rika',   name:'理科', max:45, hasCat:true, dayLabel:'木曜', get cats(){ return getCats('rika');   } },
+    { key:'shakai_tue', subject:'shakai', name:'社会', max:45, hasCat:true, dayLabel:'火曜', get cats(){ return getCats('shakai'); } },
+  ];
+  document.getElementById('main').innerHTML = `<div style="max-width:960px;margin:0 auto;padding:24px 18px 80px;">` + renderItemGroups(items, data) + `</div>`;
+}
+
+// ===== DOKTOKU VIEW（土特）=====
+function renderDoktokuView() {
+  const data = window._data || {};
+  const items = [
+    { key:'rika_sat',   subject:'rika',   name:'理科', max:35, hasCat:true, dayLabel:'土曜', get cats(){ return getCats('rika');   } },
+    { key:'shakai_sat', subject:'shakai', name:'社会', max:35, hasCat:true, dayLabel:'土曜', get cats(){ return getCats('shakai'); } },
+  ];
+  document.getElementById('main').innerHTML = `<div style="max-width:960px;margin:0 auto;padding:24px 18px 80px;">` + renderItemGroups(items, data) + `</div>`;
+}
+
+// ===== SEASON VIEW（季節講習）=====
+function renderSeasonView() {
+  const data = window._data || {};
+  const items = [
+    { key:'kokugo_spr', subject:'kokugo', name:'国語', max:6,  hasCat:true, sprLabel:'春', get cats(){ return getCats('kokugo'); } },
+    { key:'sansu_spr',  subject:'sansu',  name:'算数', max:6,  hasCat:true, sprLabel:'春', get cats(){ return getCats('sansu');  } },
+    { key:'rika_spr',   subject:'rika',   name:'理科', max:3,  hasCat:true, sprLabel:'春', get cats(){ return getCats('rika');   } },
+    { key:'shakai_spr', subject:'shakai', name:'社会', max:3,  hasCat:true, sprLabel:'春', get cats(){ return getCats('shakai'); } },
+  ];
+  // 4教科は2×2グリッド
+  const data2 = data;
+  let html = '<div class="two-col">';
+  const left  = items.slice(0,2);
+  const right = items.slice(2,4);
+  [left, right].forEach(grp => {
+    html += '<div>';
+    grp.forEach(it => {
+      const badge = it.subject==='kokugo'?'国':it.subject==='sansu'?'算':it.subject==='rika'?'理':'社';
+      html += `<div class="rounds-wrap" style="margin-bottom:16px;">
+        <div class="sec-title ${it.subject}">
+          <span class="sec-badge ${it.subject}">${badge}</span>
+          ${it.name} <span class="day-badge">春期</span>
+        </div>`;
+      for (let n = 1; n <= it.max; n++) {
+        const row   = (data2[it.key] && data2[it.key][n]) || { links:[] };
+        const links = row.links || [];
+        const cat   = row.category || '';
+        const hasL  = links.length > 0;
+        html += `<div class="round-card ${it.subject}-card${hasL?' has-links':''}" style="margin-bottom:6px;">
+          <div class="round-num">春${n}回${cat?`<span class="cat-pill ${cat}">${cat}</span>`:''}</div>
+          <div class="link-list">`;
+        if (hasL) {
+          links.forEach(lk => {
+            html += `<a href="${escH(lk.url)}" onclick="openLinkWithPw('${escH(lk.url)}',event)" class="link-item ${it.subject}-lnk">
+              ${getLinkIcon(lk.url)} <span>${escH(lk.label||lk.url)}</span></a>`;
+          });
+        } else {
+          html += `<span class="empty-card">リンクなし</span>`;
+        }
+        html += `</div></div>`;
+      }
+      html += `</div>`;
+    });
+    html += '</div>';
+  });
+  html += '</div>';
   document.getElementById('main').innerHTML = html;
 }
 
@@ -544,9 +644,68 @@ function renderCatView() {
 }
 
 
+// ===== SPRING VIEW =====
+function renderSpringView() {
+  const data = window._data || {};
+  let html = `<div style="max-width:960px;margin:0 auto;padding:24px 18px 80px;">
+    <div style="font-size:1rem;font-weight:700;margin-bottom:16px;color:var(--muted);display:flex;align-items:center;gap:8px;">
+      🌸 <span>春期講習</span>
+    </div>
+    <div class="two-col">`;
+
+  SPRING_ITEMS.forEach(it => {
+    const badge = it.subject==='kokugo'?'国':it.subject==='sansu'?'算':it.subject==='rika'?'理':'社';
+    html += `<div class="rounds-wrap col-item">
+      <div class="sec-title ${it.subject}">
+        <span class="sec-badge ${it.subject}">${badge}</span>
+        ${it.name}
+      </div>`;
+
+    const GROUP_SIZE = 4;
+    const totalGroups = Math.ceil(it.max / GROUP_SIZE);
+    for (let g = 0; g < totalGroups; g++) {
+      const from = g * GROUP_SIZE + 1;
+      const to   = Math.min((g + 1) * GROUP_SIZE, it.max);
+      const isOpen = true;
+      const groupId = `spr-${it.key}-${g}`;
+      html += `<div class="round-group">
+        <button class="round-group-header${isOpen?' open':''}" onclick="toggleGroup('${groupId}',this)">
+          <span>第${from}回 〜 第${to}回</span>
+          <span class="grp-chevron">▲</span>
+        </button>
+        <div class="round-group-body${isOpen?' open':''}" id="${groupId}">
+          <div class="rounds-grid">`;
+      for (let n = from; n <= to; n++) {
+        const row   = (data[it.key] && data[it.key][n]) || { links:[] };
+        const links = row.links || [];
+        const cat   = row.category || '';
+        const hasL  = links.length > 0;
+        html += `<div class="round-card ${it.subject}-card${hasL?' has-links':''}">
+          <div class="round-num">春${n}回${cat?`<span class="cat-pill ${cat}">${cat}</span>`:''}</div>
+          <div class="link-list">`;
+        if (hasL) {
+          links.forEach(lk => {
+            html += `<a href="${escH(lk.url)}" onclick="openLinkWithPw('${escH(lk.url)}',event)" class="link-item ${it.subject}-lnk">
+              ${getLinkIcon(lk.url)} <span>${escH(lk.label||lk.url)}</span></a>`;
+          });
+        } else {
+          html += `<span class="empty-card">リンクなし</span>`;
+        }
+        html += `</div></div>`;
+      }
+      html += `</div></div></div>`;
+    }
+    html += `</div>`;
+  });
+
+  html += `</div></div>`;
+  document.getElementById('main').innerHTML = html;
+}
+
 // ===== CATEGORY MANAGER =====
 const CAT_SUBJECTS = [
   { key:'kokugo', label:'国語', cls:'kokugo', badge:'国' },
+  { key:'sansu',  label:'算数', cls:'sansu',  badge:'算' },
   { key:'rika',   label:'理科', cls:'rika',   badge:'理' },
   { key:'shakai', label:'社会', cls:'shakai', badge:'社' },
 ];
@@ -640,19 +799,32 @@ function renderEditSelector() {
       <div style="padding:16px 18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
         <select id="editKeySelect" class="cat-select" style="min-width:160px;" onchange="editSelKey=this.value;editSelN=null;updateRoundSelect();renderEditPanel()">
           <option value="">── 授業を選択 ──</option>`;
-  DAY_GROUPS.forEach(grp => {
-    grp.items.forEach(it => {
-      const badge = it.subject==='kokugo'?'国':it.subject==='rika'?'理':'社';
-      const selected = editSelKey===it.key ? ' selected' : '';
-      html += `<option value="${it.key}"${selected}>[${grp.label}] ${it.name}</option>`;
-    });
+  const ALL_EDIT_ITEMS = [
+    { key:'kokugo_tue', name:'国語（火曜・平日）' },
+    { key:'rika_thu',   name:'理科（木曜・平日）' },
+    { key:'shakai_tue', name:'社会（火曜・平日）' },
+    { key:'rika_sat',   name:'理科（土曜・土特）' },
+    { key:'shakai_sat', name:'社会（土曜・土特）' },
+    { key:'kokugo_spr', name:'国語（春期）' },
+    { key:'sansu_spr',  name:'算数（春期）' },
+    { key:'rika_spr',   name:'理科（春期）' },
+    { key:'shakai_spr', name:'社会（春期）' },
+  ];
+  ALL_EDIT_ITEMS.forEach(it => {
+    const selected = editSelKey===it.key ? ' selected' : '';
+    html += `<option value="${it.key}"${selected}>${it.name}</option>`;
   });
   html += `</select>
         <select id="editRoundSelect" class="cat-select" style="min-width:120px;" onchange="editSelN=parseInt(this.value);renderEditPanel()">
           <option value="">── 回を選択 ──</option>`;
   // 選択中のキーがあれば回を埋める
   if (editSelKey) {
-    const it = DAY_GROUPS.flatMap(g=>g.items).find(i=>i.key===editSelKey);
+    const ALL_KEYED2 = [
+    { key:'kokugo_tue', max:45 }, { key:'rika_thu', max:45 }, { key:'shakai_tue', max:45 },
+    { key:'rika_sat', max:35 }, { key:'shakai_sat', max:35 },
+    { key:'kokugo_spr', max:6 }, { key:'sansu_spr', max:6 }, { key:'rika_spr', max:3 }, { key:'shakai_spr', max:3 },
+  ];
+  const it = ALL_KEYED2.find(i=>i.key===editSelKey);
     if (it) {
       for (let n=1; n<=it.max; n++) {
         const row = (window._editData[editSelKey]&&window._editData[editSelKey][n])||{links:[]};
@@ -676,7 +848,12 @@ function updateRoundSelect() {
   if (!sel) return;
   sel.innerHTML = '<option value="">── 回を選択 ──</option>';
   if (!editSelKey) return;
-  const it = DAY_GROUPS.flatMap(g=>g.items).find(i=>i.key===editSelKey);
+  const ALL_KEYED2 = [
+    { key:'kokugo_tue', max:45 }, { key:'rika_thu', max:45 }, { key:'shakai_tue', max:45 },
+    { key:'rika_sat', max:35 }, { key:'shakai_sat', max:35 },
+    { key:'kokugo_spr', max:6 }, { key:'sansu_spr', max:6 }, { key:'rika_spr', max:3 }, { key:'shakai_spr', max:3 },
+  ];
+  const it = ALL_KEYED2.find(i=>i.key===editSelKey);
   if (!it) return;
   for (let n=1; n<=it.max; n++) {
     const row = (window._editData[editSelKey]&&window._editData[editSelKey][n])||{links:[]};
@@ -696,7 +873,12 @@ function renderEditPanel() {
     panel.innerHTML = '<div style="font-size:.82rem;color:var(--muted);padding:4px 0 8px;">授業と回を選択してください</div>';
     return;
   }
-  const it = DAY_GROUPS.flatMap(g=>g.items).find(i=>i.key===editSelKey);
+  const ALL_KEYED2 = [
+    { key:'kokugo_tue', max:45 }, { key:'rika_thu', max:45 }, { key:'shakai_tue', max:45 },
+    { key:'rika_sat', max:35 }, { key:'shakai_sat', max:35 },
+    { key:'kokugo_spr', max:6 }, { key:'sansu_spr', max:6 }, { key:'rika_spr', max:3 }, { key:'shakai_spr', max:3 },
+  ];
+  const it = ALL_KEYED2.find(i=>i.key===editSelKey);
   if (!it) return;
   if (!window._editData[editSelKey]) window._editData[editSelKey] = {};
   if (!window._editData[editSelKey][editSelN]) window._editData[editSelKey][editSelN] = {category:'',links:[]};
@@ -707,7 +889,7 @@ function renderEditPanel() {
 
   let html = `<div style="border-top:1.5px solid var(--border);padding-top:14px;">
     <div style="font-size:.85rem;font-weight:700;margin-bottom:10px;color:var(--${subj});">
-      第${editSelN}回 <span class="day-badge">${DAY_GROUPS.find(g=>g.items.some(i=>i.key===editSelKey))?.label||''}</span>
+      第${editSelN}回 <span class="day-badge">${SPRING_ITEMS.some(i=>i.key===editSelKey)?'春期':DAY_GROUPS.find(g=>g.items.some(i=>i.key===editSelKey))?.label||''}</span>
     </div>`;
 
   if (it.hasCat) {
@@ -876,42 +1058,7 @@ function toggleGroup(id, btn) {
   btn.querySelector('.grp-chevron').textContent = isOpen ? '▲' : '▼';
 }
 
-window._currentView = renderDayView;
-
-// ===== LINK PASSWORD =====
-let _pendingUrl = null;
-
-function openLinkWithPw(url, e) {
-  e.preventDefault();
-  if (sessionStorage.getItem('auth') === '1') {
-    window.open(url, '_blank', 'noopener');
-    return;
-  }
-  _pendingUrl = url;
-  document.getElementById('pwModal').style.display = 'flex';
-  setTimeout(() => document.getElementById('pwModalInput').focus(), 50);
-}
-
-function submitPw() {
-  const val = document.getElementById('pwModalInput').value;
-  if (val === 'g') {
-    sessionStorage.setItem('auth', '1');
-    closePwModal();
-    if (_pendingUrl) window.open(_pendingUrl, '_blank', 'noopener');
-    _pendingUrl = null;
-  } else {
-    document.getElementById('pwModalErr').style.display = 'block';
-    document.getElementById('pwModalInput').value = '';
-    document.getElementById('pwModalInput').focus();
-  }
-}
-
-function closePwModal() {
-  document.getElementById('pwModal').style.display = 'none';
-  document.getElementById('pwModalInput').value = '';
-  document.getElementById('pwModalErr').style.display = 'none';
-  _pendingUrl = null;
-}
+window._currentView = renderWeekdayView;
 
 
 </script>
